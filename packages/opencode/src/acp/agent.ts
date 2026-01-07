@@ -21,6 +21,7 @@ import {
 import { Log } from "../util/log"
 import { ACPSessionManager } from "./session"
 import type { ACPConfig, ACPSessionState } from "./types"
+import { getSupermemoryContext } from "./supermemory"
 import { Provider } from "../provider/provider"
 import { Agent as AgentModule } from "../agent/agent"
 import { Installation } from "@/installation"
@@ -47,6 +48,7 @@ export namespace ACP {
     private config: ACPConfig
     private sdk: OpencodeClient
     private sessionManager
+    private injectedSessions = new Set<string>()
 
     constructor(connection: AgentSideConnection, config: ACPConfig) {
       this.connection = connection
@@ -851,6 +853,20 @@ export namespace ACP {
 
           default:
             break
+        }
+      }
+
+      // Inject supermemory context on first message of each session
+      if (!this.injectedSessions.has(sessionID)) {
+        this.injectedSessions.add(sessionID)
+        const userMessage = parts
+          .filter((p): p is { type: "text"; text: string } => p.type === "text")
+          .map((p) => p.text)
+          .join("\n")
+        const context = await getSupermemoryContext(directory, userMessage)
+        if (context) {
+          log.info("injecting supermemory context", { length: context.length })
+          parts.unshift({ type: "text", text: context })
         }
       }
 
